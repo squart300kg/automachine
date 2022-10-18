@@ -210,7 +210,8 @@ def get_last_chat():
 
 
 def is_multi_compaign(chat_contents):
-    campaign_number = len(re.findall(r'\d{4}'r'.', chat_contents))
+    campaign_number = len(re.findall(r'\d{4}.', chat_contents))
+
     if (campaign_number > 1):
         return True
     else:
@@ -236,15 +237,15 @@ def detect_keyword_sentence(last_raw_chat_index, last_raw_chat_contents):
 
         last_raw_chat_contents_line_str = str(last_raw_chat_contents.values[0].replace(" ", "").replace("\n", ""))
         
-        is_detected = False
+        is_compaign_detected = False
         for i in range(len(DETECTION_SENTENCES)):
             if (DETECTION_SENTENCES[i] in last_raw_chat_contents_line_str):
-                is_detected = True
+                is_compaign_detected = True
                 break
             else:
-                is_detected = False
+                is_compaign_detected = False
 
-        if is_detected:
+        if is_compaign_detected:
             if (is_multi_compaign(last_raw_chat_contents_line_str)):
                 answer = random.choice(AGREE_MULTI_ANSWER_IST) 
             else:
