@@ -347,11 +347,11 @@ def main():
         if PROGRAM_ON_OFF == True:
             if (current_hour >= START_RECEVED_HOUR and current_hour < END_RECEIVED_HOUR):
                 if (TODAY_RECEIVE_COUNT < MAX_REVEIVED_COUNT):
-                    print("================양도 받는중================\n", TODAY_RECEIVE_COUNT, "2 : ", MAX_REVEIVED_COUNT)
+                    print("================양도 받는중================\n")
                     last_raw_chat_index, last_raw_chat_contents = detect_keyword_sentence(last_raw_chat_index, last_raw_chat_contents)
                     time.sleep(DETECTION_INTERVER_SECOND)
                 else:
-                    print("================양도 최대 일 갯수 초과================\n", TODAY_RECEIVE_COUNT, "2 : ", MAX_REVEIVED_COUNT)
+                    print("================양도 최대 일 갯수 초과================\n")
                     time.sleep(TODAY_COUNT_OUT_INTERVAL_SECOND)
                     continue
             else:
