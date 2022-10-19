@@ -1,3 +1,4 @@
+from asyncio.windows_events import NULL
 import ctypes
 import time
 from tkinter import END
@@ -7,20 +8,30 @@ import win32gui
 import random
 import datetime
 import re
+from firebase_admin import credentials, db, initialize_app
+import os
 
 import pandas as pd
 from pywinauto import clipboard
 
+PROGRAM_ON_OFF = True
+KAKAO_ROOM_NAME = '송상윤'
 MAX_REVEIVED_COUNT = 3
+TODAY_RECEIVE_COUNT = 0
 
-current_hour = datetime.datetime.now().hour
 START_RECEVED_HOUR = 10
 END_RECEIVED_HOUR = 22
+current_hour = datetime.datetime.now().hour
 TODAY_TIME_OUT_INTERVAL_SECOND = (END_RECEIVED_HOUR - START_RECEVED_HOUR) * 60 * 60
-TODAY_COUNT_OUT_INTERVAL_SECOND = TODAY_TIME_OUT_INTERVAL_SECOND - (END_RECEIVED_HOUR - current_hour) * 60 * 60
+TODAY_COUNT_OUT_INTERVAL_SECOND = 10
 DETECTION_INTERVER_SECOND = 3
 
-KAKAO_ROOM_NAME = '송상윤'
+cred = credentials.Certificate(str(os.getcwd()) + '\\mykey.json')
+initialize_app(cred,{
+    'databaseURL' : 'https://kakao-auto-program-default-rtdb.firebaseio.com/' 
+})
+firebase_db = db.reference("controll")
+
     # 예외처리필요
     #"[당일 마감 모집]",
 DETECTION_SENTENCES = [
@@ -209,8 +220,11 @@ def get_last_chat():
     return data_frame_chat_contents.index[-2], data_frame_chat_contents.iloc[-2, 0]
 
 
+def get_campaign_number(chat_contents):
+    return len(re.findall(r'\d{4}.', chat_contents))
+
 def is_multi_compaign(chat_contents):
-    campaign_number = len(re.findall(r'\d{4}.', chat_contents))
+    campaign_number = get_campaign_number(chat_contents)
 
     if (campaign_number > 1):
         return True
@@ -257,6 +271,9 @@ def detect_keyword_sentence(last_raw_chat_index, last_raw_chat_contents):
             answer = random.choice(SHEET_CHANGE_ANSWER_LIST) 
             send_kakao_talk(answer)  
 
+            received_campaign_number = get_campaign_number(last_raw_chat_contents_line_str)
+            plus_today_receive_count_to_firebase(received_campaign_number)
+
             print("================키워드 확인!================\n 마지막 채팅 인덱스 : ", last_raw_chat_index, "\n마지막 채팅 내용 : ", last_raw_chat_contents, "\n===========================================\n")
 
         else:
@@ -265,29 +282,90 @@ def detect_keyword_sentence(last_raw_chat_index, last_raw_chat_contents):
     return data_frame_chat_contents.index[-2], data_frame_chat_contents.iloc[-2, 0]
 
 
+def plus_today_receive_count_to_firebase(received_campaign_number):
+    global TODAY_RECEIVE_COUNT
+    TODAY_RECEIVE_COUNT = int(firebase_db.child("TODAY_RECEIVE_COUNT").get()) + received_campaign_number
+    
+    firebase_db.update({'TODAY_RECEIVE_COUNT' : TODAY_RECEIVE_COUNT})
+
+
+def zero_today_receive_count_to_firebase():
+    firebase_db.update({'TODAY_RECEIVE_COUNT' : 0})
+
+
+def firebase_listener(event):    
+
+    global PROGRAM_ON_OFF
+    global KAKAO_ROOM_NAME
+    global MAX_REVEIVED_COUNT
+    global START_RECEVED_HOUR
+    global END_RECEIVED_HOUR
+    global TODAY_RECEIVE_COUNT
+
+    print("================전역변수변경================ \n")
+    print("data : ", event.data, "\n")
+
+    for key, value in event.data.items():
+        if key == "PROGRAM_ON_OFF":
+            print("PROGRAM_ON_OFF : ", PROGRAM_ON_OFF, " -> ", value, "\n")
+            PROGRAM_ON_OFF = value
+
+        if key == "KAKAO_ROOM_NAME":
+            print("KAKAO_ROOM_NAME : ", KAKAO_ROOM_NAME, " -> ", value, "\n")
+            KAKAO_ROOM_NAME = value
+
+        if key == "MAX_REVEIVED_COUNT":
+            print("MAX_REVEIVED_COUNT : ", MAX_REVEIVED_COUNT, " -> ", value, "\n")
+            MAX_REVEIVED_COUNT = value
+
+        if key == "START_RECEVED_HOUR":
+            print("START_RECEVED_HOUR : ", START_RECEVED_HOUR, " -> ", value, "\n")
+            START_RECEVED_HOUR = value
+
+        if key == "END_RECEIVED_HOUR":
+            print("END_RECEIVED_HOUR : ", END_RECEIVED_HOUR, " -> ", value, "\n")
+            END_RECEIVED_HOUR = value
+
+        if key == "TODAY_RECEIVE_COUNT":
+            print("TODAY_RECEIVE_COUNT : ", TODAY_RECEIVE_COUNT, " -> ", value, "\n")
+            TODAY_RECEIVE_COUNT = value
+
+    print("===========================================\n")
+
+ 
 # 로직 플로우 차트 : https://drive.google.com/file/d/1UVD8wxVqSgF89pPqWXAi4iAYhLtzF2D9/view?usp=sharing
 def main():
 
+    firebase_db.listen(firebase_listener)
+
     print("================가동 시작================")
-    today_received_count = 0
+
     last_raw_chat_index, last_raw_chat_contents = get_last_chat() 
 
+    global TODAY_RECEIVE_COUNT
     while True:
-
-        if (current_hour >= START_RECEVED_HOUR and current_hour < END_RECEIVED_HOUR):
-            if (today_received_count < MAX_REVEIVED_COUNT):
-                print("================양도 받는중================\n")
-                last_raw_chat_index, last_raw_chat_contents = detect_keyword_sentence(last_raw_chat_index, last_raw_chat_contents)
-                time.sleep(DETECTION_INTERVER_SECOND)
+        if PROGRAM_ON_OFF == True:
+            if (current_hour >= START_RECEVED_HOUR and current_hour < END_RECEIVED_HOUR):
+                if (TODAY_RECEIVE_COUNT < MAX_REVEIVED_COUNT):
+                    print("================양도 받는중================\n", TODAY_RECEIVE_COUNT, "2 : ", MAX_REVEIVED_COUNT)
+                    last_raw_chat_index, last_raw_chat_contents = detect_keyword_sentence(last_raw_chat_index, last_raw_chat_contents)
+                    time.sleep(DETECTION_INTERVER_SECOND)
+                else:
+                    print("================양도 최대 일 갯수 초과================\n", TODAY_RECEIVE_COUNT, "2 : ", MAX_REVEIVED_COUNT)
+                    time.sleep(TODAY_COUNT_OUT_INTERVAL_SECOND)
+                    continue
             else:
-                print("================양도 최대 일 갯수 초과================\n")
-                time.sleep(TODAY_COUNT_OUT_INTERVAL_SECOND)
+                print("================양도 최대 시간 초과================\n")
+                TODAY_RECEIVE_COUNT = 0
+                zero_today_receive_count_to_firebase()
+                time.sleep(TODAY_TIME_OUT_INTERVAL_SECOND)
                 continue
         else:
-            print("================양도 최대 시간 초과================\n")
-            today_received_count = 0
-            time.sleep(TODAY_TIME_OUT_INTERVAL_SECOND)
+            print("================프로그램 꺼짐================\n")
+            time.sleep(300)
             continue
+
+        
 
 if __name__ == '__main__':
     main()
